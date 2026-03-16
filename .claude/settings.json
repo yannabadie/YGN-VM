@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(.env)",
+      "Edit(.env.*)",
+      "Edit(**/*.sec)",
+      "Read(**/*.sec)"
+    ],
+    "allow": [
+      "Bash(cargo *)",
+      "Bash(rustup *)",
+      "Bash(git *)",
+      "Bash(gh *)"
+    ]
+  },
+  "env": {
+    "RUST_BACKTRACE": "1",
+    "CARGO_TERM_COLOR": "always"
+  }
+}

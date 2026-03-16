@@ -12,6 +12,14 @@
 
 **What it is NOT**: an agent framework, a governance platform, a Claude Code plugin, a competitor to Runlayer/GitHub/Microsoft.
 
+### Scope Decision (deviation from brief)
+
+The operating brief (section 5.3) requests three delivery forms for v1: CLI, sidecar/proxy, and CI/PR integration. After evaluation during the design phase, v1 is deliberately scoped to **CLI-only**. Rationale:
+- The brief's own roadmap (semaines 1-2) says "preuve de produit, pas scale."
+- A solid CLI is the fastest path to a demo-ready proof of product.
+- The sidecar and CI wrapper are thin layers that call the CLI — trivial to add once the CLI is stable.
+- **Sidecar and CI/PR integration are targeted for weeks 3-4** (fast-follow, not v2).
+
 ## 2. Architecture
 
 ### 2.1 Workspace Structure
@@ -102,6 +110,12 @@ pub struct EventContext {
     pub branch: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pr_number: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool: Option<String>,              // Tool/MCP server that performed the action
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub policy: Option<String>,            // Governing policy name/id (if any)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<String>,            // Outcome: "success", "failure", exit code, etc.
 }
 ```
 
@@ -114,8 +128,10 @@ pub struct Receipt {
     pub hash: [u8; 32],               // SHA-256 of canonical JSON of event
     pub prev_hash: [u8; 32],          // Hash of previous receipt (chain link)
     pub sequence: u64,                 // Position in chain (0, 1, 2...)
+    // Reserved for v2 (per-receipt streaming signatures). Not populated in v1.
+    // In v1, only pack-level signatures (on merkle_root) are used.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub signature: Option<[u8; 64]>,  // Ed25519 signature of hash
+    pub signature: Option<[u8; 64]>,
 }
 ```
 
@@ -163,12 +179,12 @@ pub struct PackSignature {
 - Each receipt's `hash` = SHA-256 of the canonical JSON serialization of its `event`.
 - `prev_hash` of receipt[0] = `[0u8; 32]` (genesis).
 - `prev_hash` of receipt[N] = `hash` of receipt[N-1].
-- Canonical JSON: deterministic serialization via `serde_json::to_vec` (keys sorted if needed).
+- Canonical JSON: deterministic serialization via `serde_json::to_vec`. For Rust structs, field order is deterministic (declaration order). For `serde_json::Value` maps (used in `Event.payload`), `serde_json` uses `BTreeMap` by default which sorts keys alphabetically. The `preserve_order` feature MUST NOT be enabled in aletheia-core to guarantee deterministic hashing across implementations.
 
 ### 4.2 Merkle Tree
 
 - Leaves = `hash` field of each receipt.
-- If odd number of leaves, duplicate the last leaf.
+- If odd number of leaves, duplicate the last leaf. (Known limitation: this can create ambiguity between N and N+1 identical-last-leaf trees. Acceptable for MVP; v2 may adopt domain-separated padding.)
 - Parent = SHA-256(left_child || right_child).
 - Recurse until single root.
 - Empty pack → merkle_root = `[0u8; 32]`.
@@ -220,6 +236,8 @@ Input format: each line is either:
 - Valid JSON with at least `{"payload": ...}` → parsed as Event (missing fields get defaults)
 - Plain text → wrapped as Event with kind=Custom and payload={"text": "<line>"}
 
+Note: JSONL parsing strips trailing `\r` (CRLF) before JSON deserialization for Windows compatibility.
+
 ### 5.3 `aletheia seal`
 
 ```
@@ -254,10 +272,11 @@ Output: JSON summary to stdout.
 ### 5.5 `aletheia export`
 
 ```
-aletheia export --format html|json <pack.aletheia.json> [--output <path>]
+aletheia export --format html|json|markdown <pack.aletheia.json> [--output <path>]
 
 html: Standalone HTML report with timeline, hashes, tree visualization, verdict.
 json: Pretty-printed JSON.
+markdown: Structured Markdown report (readable in GitHub/GitLab PR views).
 Default output: stdout (or file if --output specified).
 ```
 
@@ -306,32 +325,49 @@ Sections:
 
 Implementation: `include_str!("templates/report.html")` with placeholder replacement. CSS supports `prefers-color-scheme` for dark/light. Print-friendly.
 
-## 9. Dependencies (aletheia-core)
+## 9. Threat Model
+
+The cryptographic design protects against:
+
+- **Tampering**: Any modification to an event, receipt, or their ordering breaks the hash chain and/or Merkle root. Detectable via `aletheia verify`.
+- **Forgery**: Without the signing key, an attacker cannot produce valid Ed25519 signatures on a Merkle root. Pack-level signatures attest that a specific signer sealed the pack.
+- **Reordering/deletion**: The `prev_hash` chain enforces strict sequential ordering. Removing or reordering receipts breaks the chain.
+- **Substitution**: Replacing one event with another changes its hash, breaking the chain link and Merkle root.
+
+What it does NOT protect against:
+- **Key compromise**: If the signing key is stolen, forged packs can be created. Key management is the user's responsibility.
+- **Event source authenticity**: The system proves that events were chained and sealed, not that they are truthful. A malicious agent could emit false events.
+- **Individual receipt ordering (without chain)**: Per-receipt signatures (v2 feature) sign the event hash, not the chain position. Only the full chain + Merkle root proves ordering.
+- **Coercion/collusion**: If the signer is also the attacker, they can produce valid but dishonest packs.
+
+## 10. Dependencies (aletheia-core)
 
 ```toml
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = "1"                          # BTreeMap by default (deterministic key order)
 sha2 = "0.10"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = "0.8"
 uuid = { version = "1", features = ["v7"] }
-chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
 thiserror = "2"
 ```
 
-## 10. Dependencies (aletheia-cli)
+Note: `chrono` is NOT in core (timestamps are `u64` Unix millis). Display formatting lives in CLI.
+
+## 11. Dependencies (aletheia-cli)
 
 ```toml
 [dependencies]
 aletheia-core = { path = "../aletheia-core" }
 clap = { version = "4", features = ["derive"] }
 dirs = "6"
+chrono = { version = "0.4", features = ["serde"] }  # For timestamp display only
 tokio = { version = "1", features = ["full"] }
 ```
 
-## 11. Source Code Lineage
+## 12. Source Code Lineage
 
 Key code ported/adapted from existing repos:
 
@@ -343,7 +379,7 @@ Key code ported/adapted from existing repos:
 | nexus-evidence | `models/evidence.py` Pydantic models | `aletheia-core/src/pack.rs` | Rewrite as Rust serde structs |
 | nexus-evidence | `core/packager.py` SHA-256 manifest | `aletheia-core/src/pack.rs` | Integrate into pack format |
 
-## 12. CI/CD
+## 13. CI/CD
 
 GitHub Actions workflow running on push and PR:
 
@@ -361,7 +397,7 @@ steps:
 
 Artifacts: release binaries for all 3 platforms.
 
-## 13. v2 Roadmap (explicitly out of scope for v1)
+## 14. v2 Roadmap (explicitly out of scope for v1)
 
 - Sidecar/proxy mode
 - GitHub Action wrapper (`yannabadie/aletheia-action`)
@@ -375,7 +411,7 @@ Artifacts: release binaries for all 3 platforms.
 - Self-hosted team server
 - Connectors (Slack, Jira, GitHub, GitLab)
 
-## 14. Testing Strategy
+## 15. Testing Strategy
 
 ### Unit tests (aletheia-core)
 - Hash chain: empty, single, multi-entry, tampered
@@ -396,7 +432,7 @@ Artifacts: release binaries for all 3 platforms.
 - `cargo clippy --all -- -D warnings` (zero warnings)
 - `cargo fmt --check`
 
-## 15. Commercial Context
+## 16. Commercial Context
 
 **ICP**: European SMBs/scale-ups, 20-300 developers, using Claude Code/Copilot/Cursor, sensitive to compliance/audit.
 
