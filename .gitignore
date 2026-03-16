@@ -24,3 +24,8 @@ Thumbs.db
 # Sessions (local data)
 sessions/
 .superpowers/
+
+# Next.js
+packages/web/node_modules/
+packages/web/.next/
+packages/web/out/
