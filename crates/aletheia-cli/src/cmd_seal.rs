@@ -36,7 +36,9 @@ pub fn run(
         }
         let receipt: Receipt = serde_json::from_str(trimmed)
             .map_err(|e| format!("invalid receipt on line {}: {}", lineno + 1, e))?;
-        chain.append(receipt.event);
+        chain
+            .append(receipt.event)
+            .map_err(|e| format!("hash chain error on line {}: {}", lineno + 1, e))?;
     }
 
     if chain.is_empty() {

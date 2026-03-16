@@ -1,3 +1,5 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -52,11 +54,20 @@ impl EventContext {
     }
 }
 
+/// Return the current time as Unix epoch milliseconds.
+fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
 /// A single recorded event in an evidence pack.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Event {
     pub id: String,
-    pub timestamp: String,
+    /// Unix epoch milliseconds.
+    pub timestamp: u64,
     pub kind: EventKind,
     pub source: String,
     pub context: EventContext,
@@ -72,7 +83,7 @@ impl Event {
         payload: serde_json::Value,
     ) -> Self {
         let id = Uuid::now_v7().to_string();
-        let timestamp = chrono_now_utc();
+        let timestamp = now_millis();
         Self {
             id,
             timestamp,
@@ -88,6 +99,7 @@ impl Event {
     /// Expected JSON fields: `kind` (optional), `source` (optional), `payload` (required or
     /// falls back to the entire object). Missing `kind` defaults to `Custom`; missing `source`
     /// defaults to `"jsonl"`. Trailing `\r` is stripped for Windows compatibility.
+    /// Missing `timestamp` defaults to the current time in milliseconds.
     pub fn from_json_line(line: &str, session_id: impl Into<String>) -> Result<Self, String> {
         // Strip trailing \r (Windows line endings)
         let line = line.trim_end_matches('\r');
@@ -112,9 +124,21 @@ impl Event {
             .cloned()
             .unwrap_or_else(|| value.clone());
 
+        let timestamp: u64 = value
+            .get("timestamp")
+            .and_then(|v| v.as_u64())
+            .unwrap_or_else(now_millis);
+
         let context = EventContext::new(session_id);
 
-        Ok(Self::new(kind, source, context, payload))
+        Ok(Self {
+            id: Uuid::now_v7().to_string(),
+            timestamp,
+            kind,
+            source,
+            context,
+            payload,
+        })
     }
 
     /// Wrap a plain text string as a Custom event.
@@ -124,45 +148,6 @@ impl Event {
         let payload = serde_json::json!({ "text": text });
         Self::new(EventKind::Custom, "plain_text", context, payload)
     }
-}
-
-/// Return the current UTC timestamp as an ISO-8601 string.
-fn chrono_now_utc() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    // Format as a simple UTC ISO-8601 string without pulling in chrono here
-    // (chrono is a CLI dep; core uses std::time)
-    format_unix_utc(secs)
-}
-
-/// Minimal UTC formatter: produces `YYYY-MM-DDTHH:MM:SSZ`.
-fn format_unix_utc(secs: u64) -> String {
-    // Days from epoch
-    let days = secs / 86400;
-    let time_of_day = secs % 86400;
-    let hour = time_of_day / 3600;
-    let minute = (time_of_day % 3600) / 60;
-    let second = time_of_day % 60;
-
-    // Gregorian calendar calculation from Julian Day Number
-    let jdn = days + 2440588; // Unix epoch is JDN 2440588
-    let a = jdn + 32044;
-    let b = (4 * a + 3) / 146097;
-    let c = a - (146097 * b) / 4;
-    let d = (4 * c + 3) / 1461;
-    let e = c - (1461 * d) / 4;
-    let m = (5 * e + 2) / 153;
-    let day = e - (153 * m + 2) / 5 + 1;
-    let month = m + 3 - 12 * (m / 10);
-    let year = 100 * b + d - 4800 + m / 10;
-
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        year, month, day, hour, minute, second
-    )
 }
 
 #[cfg(test)]
@@ -195,6 +180,8 @@ mod tests {
         assert_eq!(event.source, "bash");
         assert_eq!(event.context.session_id, "sess-1");
         assert_eq!(event.payload, serde_json::json!({"cmd": "ls"}));
+        // timestamp defaults to current time (non-zero)
+        assert!(event.timestamp > 0);
     }
 
     #[test]
@@ -206,6 +193,14 @@ mod tests {
         assert_eq!(event.kind, EventKind::Custom);
         assert_eq!(event.source, "jsonl");
         assert_eq!(event.payload, serde_json::json!({"msg": "hello"}));
+    }
+
+    #[test]
+    fn event_from_json_line_with_timestamp() {
+        let line = r#"{"payload":{"msg":"hello"},"timestamp":1700000000000}"#;
+        let event = Event::from_json_line(line, "sess-ts").expect("parse");
+
+        assert_eq!(event.timestamp, 1700000000000u64);
     }
 
     #[test]

@@ -91,7 +91,7 @@ pub fn run(
         };
 
         // Append to chain and write receipt
-        let receipt = chain.append(event);
+        let receipt = chain.append(event)?;
         let json_line = serde_json::to_string(&receipt)?;
         writeln!(receipts_file, "{}", json_line)?;
 

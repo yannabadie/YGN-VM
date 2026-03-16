@@ -34,6 +34,7 @@ pub struct PackSignature {
     pub signer: String,
     /// Hex-encoded 64-byte Ed25519 signature over the pack's Merkle root.
     pub signature: String,
+    /// Unix epoch milliseconds when this signature was created.
     pub signed_at: u64,
 }
 
@@ -42,7 +43,9 @@ pub struct PackSignature {
 pub struct EvidencePack {
     pub version: String,
     pub session_id: String,
+    /// Unix epoch milliseconds of the first event.
     pub created_at: u64,
+    /// Unix epoch milliseconds when the pack was sealed.
     pub sealed_at: u64,
     pub metadata: PackMetadata,
     pub receipts: Vec<Receipt>,
@@ -53,16 +56,20 @@ pub struct EvidencePack {
     pub signatures: Vec<PackSignature>,
 }
 
+fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
 impl EvidencePack {
     /// Assemble an `EvidencePack` from a completed `HashChain`.
     ///
     /// If `signing_key` is provided the Merkle root is signed and a
     /// `PackSignature` appended to `signatures`.
     pub fn from_chain(chain: HashChain, signing_key: Option<&[u8; 32]>) -> Self {
-        let sealed_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let sealed_at = now_millis();
 
         let chain_head = chain.head();
         let receipts = chain.into_receipts();
@@ -71,8 +78,7 @@ impl EvidencePack {
         let (session_id, created_at, metadata) = if let Some(first) = receipts.first() {
             let ctx = &first.event.context;
             let sid = ctx.session_id.clone();
-            // Parse the timestamp of the first event as a rough "created_at".
-            let cat = parse_iso8601_secs(&first.event.timestamp).unwrap_or(0);
+            let cat = first.event.timestamp;
             let meta = PackMetadata {
                 repo: ctx.repo.clone(),
                 branch: ctx.branch.clone(),
@@ -133,33 +139,6 @@ impl EvidencePack {
     }
 }
 
-/// Minimal ISO-8601 `YYYY-MM-DDTHH:MM:SSZ` parser → Unix seconds.
-fn parse_iso8601_secs(ts: &str) -> Option<u64> {
-    // Expected format: "YYYY-MM-DDTHH:MM:SSZ"
-    let ts = ts.trim_end_matches('Z');
-    let (date, time) = ts.split_once('T')?;
-    let mut dp = date.splitn(3, '-');
-    let year: i64 = dp.next()?.parse().ok()?;
-    let month: i64 = dp.next()?.parse().ok()?;
-    let day: i64 = dp.next()?.parse().ok()?;
-
-    let mut tp = time.splitn(3, ':');
-    let hour: u64 = tp.next()?.parse().ok()?;
-    let minute: u64 = tp.next()?.parse().ok()?;
-    let second: u64 = tp.next()?.parse().ok()?;
-
-    // Days since Unix epoch using a simple Gregorian formula.
-    let y = year - if month <= 2 { 1 } else { 0 };
-    let m = month + if month <= 2 { 12 } else { 0 };
-    // Julian Day Number
-    let jdn: i64 = 365 * y + y / 4 - y / 100 + y / 400 + (306 * (m + 1)) / 10 + day - 428;
-    let unix_day = jdn - 2440588;
-    if unix_day < 0 {
-        return None;
-    }
-    Some(unix_day as u64 * 86400 + hour * 3600 + minute * 60 + second)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,7 +149,7 @@ mod tests {
     fn make_event(id: &str) -> Event {
         Event {
             id: id.to_string(),
-            timestamp: "2026-01-01T00:00:00Z".to_string(),
+            timestamp: 1735689600000,
             kind: EventKind::ToolUse,
             source: "agent".to_string(),
             context: EventContext::new("sess-pack"),
@@ -181,7 +160,7 @@ mod tests {
     fn build_chain(n: usize) -> HashChain {
         let mut chain = HashChain::new();
         for i in 0..n {
-            chain.append(make_event(&format!("id-{i}")));
+            chain.append(make_event(&format!("id-{i}"))).expect("append");
         }
         chain
     }
@@ -229,5 +208,15 @@ mod tests {
 
         assert_eq!(pack.metadata.event_count, 5);
         assert_eq!(pack.session_id, "sess-pack");
+    }
+
+    #[test]
+    fn pack_created_at_is_millis() {
+        let chain = build_chain(1);
+        let pack = EvidencePack::from_chain(chain, None);
+        // created_at should be the timestamp from the first event (1735689600000)
+        assert_eq!(pack.created_at, 1735689600000);
+        // sealed_at should be in milliseconds range (> year 2020 in ms)
+        assert!(pack.sealed_at > 1_577_836_800_000);
     }
 }

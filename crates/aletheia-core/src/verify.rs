@@ -29,7 +29,7 @@ pub fn verify_pack(
 ) -> Result<VerificationResult> {
     // ── 1. Event hash integrity ──────────────────────────────────────────────
     for (i, receipt) in pack.receipts.iter().enumerate() {
-        let computed = compute_event_hash(&receipt.event);
+        let computed = compute_event_hash(&receipt.event)?;
         if computed != receipt.hash {
             return Err(AletheiaError::EventHashMismatch {
                 index: i as u64,
@@ -119,7 +119,7 @@ mod tests {
     fn make_event(id: &str) -> Event {
         Event {
             id: id.to_string(),
-            timestamp: "2026-01-01T00:00:00Z".to_string(),
+            timestamp: 1735689600000,
             kind: EventKind::ToolUse,
             source: "agent".to_string(),
             context: EventContext::new("sess-verify"),
@@ -130,7 +130,7 @@ mod tests {
     fn build_pack(n: usize, signing_key: Option<&[u8; 32]>) -> EvidencePack {
         let mut chain = HashChain::new();
         for i in 0..n {
-            chain.append(make_event(&format!("id-{i}")));
+            chain.append(make_event(&format!("id-{i}"))).expect("append");
         }
         EvidencePack::from_chain(chain, signing_key)
     }

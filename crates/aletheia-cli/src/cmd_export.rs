@@ -62,25 +62,22 @@ fn html_escape(s: &str) -> String {
 
 fn truncate_payload(value: &serde_json::Value, max_len: usize) -> String {
     let s = value.to_string();
-    if s.len() <= max_len {
-        s
+    if s.len() > max_len {
+        let end = s
+            .char_indices()
+            .nth(max_len)
+            .map(|(i, _)| i)
+            .unwrap_or(s.len());
+        format!("{}...", &s[..end])
     } else {
-        format!("{}…", &s[..max_len])
+        s
     }
 }
 
-fn timestamp_display(millis_or_secs: u64) -> String {
-    // sealed_at / created_at are Unix seconds in the pack
-    // chrono expects milliseconds for from_timestamp_millis
-    let millis = if millis_or_secs < 1_000_000_000_000 {
-        // looks like seconds
-        millis_or_secs * 1000
-    } else {
-        millis_or_secs
-    };
+fn timestamp_display(millis: u64) -> String {
     chrono::DateTime::from_timestamp_millis(millis as i64)
         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
-        .unwrap_or_else(|| millis_or_secs.to_string())
+        .unwrap_or_else(|| millis.to_string())
 }
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────

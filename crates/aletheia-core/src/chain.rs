@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::error::Result;
 use crate::event::Event;
 
 /// Serialize/deserialize a `[u8; 32]` as a lowercase hex string.
@@ -61,9 +62,9 @@ pub mod opt_hex_bytes_64 {
 }
 
 /// Compute the SHA-256 hash of an event's canonical JSON serialization.
-pub fn compute_event_hash(event: &Event) -> [u8; 32] {
-    let bytes = serde_json::to_vec(event).expect("event serialization is infallible");
-    Sha256::digest(&bytes).into()
+pub fn compute_event_hash(event: &Event) -> Result<[u8; 32]> {
+    let bytes = serde_json::to_vec(event)?;
+    Ok(Sha256::digest(&bytes).into())
 }
 
 /// A single entry in a hash chain, containing an event and its cryptographic linkage.
@@ -75,7 +76,11 @@ pub struct Receipt {
     #[serde(with = "hex_bytes_32")]
     pub prev_hash: [u8; 32],
     pub sequence: u64,
-    #[serde(with = "opt_hex_bytes_64")]
+    #[serde(
+        with = "opt_hex_bytes_64",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub signature: Option<[u8; 64]>,
 }
 
@@ -96,9 +101,9 @@ impl HashChain {
     }
 
     /// Append an event to the chain, returning a clone of the new receipt.
-    pub fn append(&mut self, event: Event) -> Receipt {
+    pub fn append(&mut self, event: Event) -> Result<Receipt> {
         let sequence = self.receipts.len() as u64;
-        let hash = compute_event_hash(&event);
+        let hash = compute_event_hash(&event)?;
         let prev_hash = self.head;
 
         let receipt = Receipt {
@@ -111,7 +116,7 @@ impl HashChain {
 
         self.head = hash;
         self.receipts.push(receipt.clone());
-        receipt
+        Ok(receipt)
     }
 
     /// Return the current chain head (hash of the last appended event).
@@ -148,7 +153,7 @@ mod tests {
     fn make_event(id: &str, source: &str) -> Event {
         Event {
             id: id.to_string(),
-            timestamp: "2026-01-01T00:00:00Z".to_string(),
+            timestamp: 1735689600000,
             kind: EventKind::ToolUse,
             source: source.to_string(),
             context: EventContext::new("sess-test"),
@@ -168,7 +173,7 @@ mod tests {
     fn single_event_chain() {
         let mut chain = HashChain::new();
         let event = make_event("id-1", "agent");
-        let receipt = chain.append(event);
+        let receipt = chain.append(event).expect("append");
 
         assert_eq!(receipt.sequence, 0);
         assert_eq!(receipt.prev_hash, [0u8; 32]);
@@ -179,8 +184,8 @@ mod tests {
     #[test]
     fn chain_links_prev_hash() {
         let mut chain = HashChain::new();
-        let r0 = chain.append(make_event("id-1", "agent"));
-        let r1 = chain.append(make_event("id-2", "agent"));
+        let r0 = chain.append(make_event("id-1", "agent")).expect("append");
+        let r1 = chain.append(make_event("id-2", "agent")).expect("append");
 
         assert_eq!(r1.prev_hash, r0.hash);
     }
@@ -188,8 +193,8 @@ mod tests {
     #[test]
     fn hash_is_deterministic() {
         let event = make_event("fixed-id", "agent");
-        let h1 = compute_event_hash(&event);
-        let h2 = compute_event_hash(&event);
+        let h1 = compute_event_hash(&event).expect("hash");
+        let h2 = compute_event_hash(&event).expect("hash");
         assert_eq!(h1, h2);
     }
 
@@ -197,6 +202,18 @@ mod tests {
     fn different_events_different_hashes() {
         let e1 = make_event("id-a", "agent");
         let e2 = make_event("id-b", "agent");
-        assert_ne!(compute_event_hash(&e1), compute_event_hash(&e2));
+        assert_ne!(
+            compute_event_hash(&e1).expect("hash"),
+            compute_event_hash(&e2).expect("hash")
+        );
+    }
+
+    #[test]
+    fn signature_none_not_serialized() {
+        let mut chain = HashChain::new();
+        let receipt = chain.append(make_event("id-sig", "agent")).expect("append");
+        assert!(receipt.signature.is_none());
+        let json = serde_json::to_value(&receipt).expect("serialize");
+        assert!(json.get("signature").is_none());
     }
 }
