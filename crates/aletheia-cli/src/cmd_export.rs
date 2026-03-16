@@ -14,14 +14,20 @@ pub fn run(
     let json_str = fs::read_to_string(&pack)
         .map_err(|e| format!("cannot read pack file '{}': {}", pack, e))?;
 
-    let evidence: EvidencePack = serde_json::from_str(&json_str)
-        .map_err(|e| format!("invalid evidence pack: {}", e))?;
+    let evidence: EvidencePack =
+        serde_json::from_str(&json_str).map_err(|e| format!("invalid evidence pack: {}", e))?;
 
     let rendered = match format.to_lowercase().as_str() {
         "json" => serde_json::to_string_pretty(&evidence)?,
         "markdown" | "md" => render_markdown(&evidence),
         "html" => render_html(&evidence, &json_str),
-        other => return Err(format!("unknown format '{}'; supported: json, markdown, html", other).into()),
+        other => {
+            return Err(format!(
+                "unknown format '{}'; supported: json, markdown, html",
+                other
+            )
+            .into())
+        }
     };
 
     match output {
@@ -81,7 +87,11 @@ fn timestamp_display(millis_or_secs: u64) -> String {
 
 fn render_markdown(pack: &EvidencePack) -> String {
     let verify_result = verify_pack(pack, None);
-    let status = if verify_result.is_ok() { "verified" } else { "failed" };
+    let status = if verify_result.is_ok() {
+        "verified"
+    } else {
+        "failed"
+    };
     let merkle_hex = hex::encode(pack.merkle_root);
     let version = &pack.version;
     let event_count = pack.metadata.event_count;
@@ -92,7 +102,10 @@ fn render_markdown(pack: &EvidencePack) -> String {
     md.push_str("# Aletheia Evidence Report\n\n");
     md.push_str(&format!("**Session:** `{}`\n\n", pack.session_id));
     md.push_str(&format!("**Status:** {}\n\n", status));
-    md.push_str(&format!("**Sealed at:** {}\n\n", timestamp_display(pack.sealed_at)));
+    md.push_str(&format!(
+        "**Sealed at:** {}\n\n",
+        timestamp_display(pack.sealed_at)
+    ));
 
     md.push_str("## Summary\n\n");
     md.push_str("| Field | Value |\n");
@@ -107,10 +120,7 @@ fn render_markdown(pack: &EvidencePack) -> String {
         let payload_str = truncate_payload(&receipt.event.payload, 80);
         md.push_str(&format!(
             "- **[{}]** `{}` / `{:?}` — {}\n",
-            receipt.sequence,
-            receipt.event.source,
-            receipt.event.kind,
-            payload_str,
+            receipt.sequence, receipt.event.source, receipt.event.kind, payload_str,
         ));
     }
 
@@ -206,7 +216,10 @@ fn render_html(pack: &EvidencePack, raw_json: &str) -> String {
 
     REPORT_HTML
         .replace("{{SESSION_ID}}", &html_escape(&pack.session_id))
-        .replace("{{SEALED_AT}}", &html_escape(&timestamp_display(pack.sealed_at)))
+        .replace(
+            "{{SEALED_AT}}",
+            &html_escape(&timestamp_display(pack.sealed_at)),
+        )
         .replace("{{STATUS_CLASS}}", status_class)
         .replace("{{STATUS_TEXT}}", status_text)
         .replace("{{EVENT_COUNT}}", &event_count.to_string())

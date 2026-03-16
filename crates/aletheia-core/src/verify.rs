@@ -87,8 +87,8 @@ pub fn verify_pack(
 
     if let Some(vk) = verifying_key {
         for ps in &pack.signatures {
-            let sig_bytes_vec =
-                hex::decode(&ps.signature).map_err(|e| AletheiaError::SigningError(e.to_string()))?;
+            let sig_bytes_vec = hex::decode(&ps.signature)
+                .map_err(|e| AletheiaError::SigningError(e.to_string()))?;
             let sig_bytes: [u8; 64] = sig_bytes_vec
                 .try_into()
                 .map_err(|_| AletheiaError::SigningError("signature not 64 bytes".to_string()))?;
@@ -169,7 +169,10 @@ mod tests {
         pack.receipts[1].event.payload = serde_json::json!({"tampered": true});
 
         let err = verify_pack(&pack, None).expect_err("should fail");
-        assert!(matches!(err, AletheiaError::EventHashMismatch { index: 1, .. }));
+        assert!(matches!(
+            err,
+            AletheiaError::EventHashMismatch { index: 1, .. }
+        ));
     }
 
     #[test]

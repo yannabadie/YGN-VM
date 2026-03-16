@@ -8,7 +8,11 @@ mod paths;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "aletheia", version = "0.1.0", about = "Aletheia cryptographic evidence packs")]
+#[command(
+    name = "aletheia",
+    version = "0.1.0",
+    about = "Aletheia cryptographic evidence packs"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -75,23 +79,33 @@ fn main() {
 
     let result = match cli.command {
         Commands::Keygen { output, name } => cmd_keygen::run(output, name),
-        Commands::Capture { session, source, context } => cmd_capture::run(session, source, context),
-        Commands::Seal { session, key, output } => cmd_seal::run(session, key, output),
+        Commands::Capture {
+            session,
+            source,
+            context,
+        } => cmd_capture::run(session, source, context),
+        Commands::Seal {
+            session,
+            key,
+            output,
+        } => cmd_seal::run(session, key, output),
         Commands::Verify { pack, key } => cmd_verify::run(pack, key),
-        Commands::Export { format, pack, output } => cmd_export::run(format, pack, output),
+        Commands::Export {
+            format,
+            pack,
+            output,
+        } => cmd_export::run(format, pack, output),
     };
 
     if let Err(e) = result {
         let msg = e.to_string();
         eprintln!("Error: {msg}");
-        let code = if msg.contains("integrity")
-            || msg.contains("mismatch")
-            || msg.contains("signature")
-        {
-            1
-        } else {
-            3
-        };
+        let code =
+            if msg.contains("integrity") || msg.contains("mismatch") || msg.contains("signature") {
+                1
+            } else {
+                3
+            };
         std::process::exit(code);
     }
 }

@@ -6,15 +6,15 @@ pub fn run(pack: String, key: Option<String>) -> Result<(), Box<dyn std::error::
     let json_str = fs::read_to_string(&pack)
         .map_err(|e| format!("cannot read pack file '{}': {}", pack, e))?;
 
-    let evidence: EvidencePack = serde_json::from_str(&json_str)
-        .map_err(|e| format!("invalid evidence pack: {}", e))?;
+    let evidence: EvidencePack =
+        serde_json::from_str(&json_str).map_err(|e| format!("invalid evidence pack: {}", e))?;
 
     // Optionally load verifying key.
     let verifying_key: Option<[u8; 32]> = if let Some(key_path) = key {
         let hex_str = fs::read_to_string(&key_path)
             .map_err(|e| format!("cannot read key file '{}': {}", key_path, e))?;
-        let bytes = hex::decode(hex_str.trim())
-            .map_err(|e| format!("key file is not valid hex: {}", e))?;
+        let bytes =
+            hex::decode(hex_str.trim()).map_err(|e| format!("key file is not valid hex: {}", e))?;
         let arr: [u8; 32] = bytes
             .try_into()
             .map_err(|_| "key file must be exactly 32 bytes (64 hex chars)")?;

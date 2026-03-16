@@ -28,9 +28,10 @@ pub fn verify(verifying_key: &[u8; 32], message: &[u8; 32], signature: &[u8; 64]
     let key = VerifyingKey::from_bytes(verifying_key)
         .map_err(|e| AletheiaError::SigningError(e.to_string()))?;
     let sig = Signature::from_bytes(signature);
-    key.verify(message.as_slice(), &sig).map_err(|_| AletheiaError::InvalidSignature {
-        signer: hex::encode(verifying_key),
-    })
+    key.verify(message.as_slice(), &sig)
+        .map_err(|_| AletheiaError::InvalidSignature {
+            signer: hex::encode(verifying_key),
+        })
 }
 
 #[cfg(test)]

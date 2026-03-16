@@ -47,8 +47,8 @@ pub fn run(
     let signing_key: Option<[u8; 32]> = if let Some(key_path) = key {
         let hex_str = fs::read_to_string(&key_path)
             .map_err(|e| format!("cannot read key file '{}': {}", key_path, e))?;
-        let bytes = hex::decode(hex_str.trim())
-            .map_err(|e| format!("key file is not valid hex: {}", e))?;
+        let bytes =
+            hex::decode(hex_str.trim()).map_err(|e| format!("key file is not valid hex: {}", e))?;
         let arr: [u8; 32] = bytes
             .try_into()
             .map_err(|_| "key file must be exactly 32 bytes (64 hex chars)")?;
