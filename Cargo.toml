@@ -1,3 +1,6 @@
 [workspace]
 resolver = "2"
 members = ["crates/aletheia-core", "crates/aletheia-cli"]
+
+[workspace.dependencies]
+serde_json = "1"
