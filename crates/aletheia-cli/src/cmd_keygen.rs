@@ -5,7 +5,7 @@ use std::path::PathBuf;
 pub fn run(output: Option<String>, name: String) -> Result<(), Box<dyn std::error::Error>> {
     let dir = output
         .map(PathBuf::from)
-        .unwrap_or_else(|| crate::paths::keys_dir());
+        .unwrap_or_else(crate::paths::keys_dir);
 
     fs::create_dir_all(&dir)?;
 

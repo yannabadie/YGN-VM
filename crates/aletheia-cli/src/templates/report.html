@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aletheia Evidence Report &mdash; {{SESSION_ID}}</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #f8f9fa;
+      --border: #dee2e6;
+      --text: #212529;
+      --text-muted: #6c757d;
+      --accent: #0d6efd;
+      --verified-bg: #d1e7dd;
+      --verified-text: #0a3622;
+      --failed-bg: #f8d7da;
+      --failed-text: #58151c;
+      --mono-bg: #f1f3f5;
+      --th-bg: #e9ecef;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1a2e;
+        --surface: #16213e;
+        --border: #374151;
+        --text: #e2e8f0;
+        --text-muted: #94a3b8;
+        --accent: #60a5fa;
+        --verified-bg: #064e3b;
+        --verified-text: #6ee7b7;
+        --failed-bg: #7f1d1d;
+        --failed-text: #fca5a5;
+        --mono-bg: #111827;
+        --th-bg: #1f2937;
+      }
+    }
+    @media print {
+      body { background: white; color: black; }
+      .collapsible-toggle { display: none; }
+      .collapsible-content { display: block !important; }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem 1rem;
+    }
+    .container { max-width: 1100px; margin: 0 auto; }
+    h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.25rem; color: var(--accent); }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 2rem 0 0.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+    .header-meta { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem; }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-top: 0.5rem;
+    }
+    .badge-verified { background: var(--verified-bg); color: var(--verified-text); }
+    .badge-failed   { background: var(--failed-bg);   color: var(--failed-text);   }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-bottom: 1rem; }
+    th { background: var(--th-bg); text-align: left; padding: 0.5rem 0.75rem; font-weight: 600; border: 1px solid var(--border); }
+    td { padding: 0.5rem 0.75rem; border: 1px solid var(--border); vertical-align: top; }
+    tr:nth-child(even) td { background: var(--surface); }
+    .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.82rem; word-break: break-all; }
+    pre.code-block {
+      background: var(--mono-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1rem;
+      overflow-x: auto;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }
+    .collapsible-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--accent);
+      cursor: pointer;
+      padding: 0.4rem 0.9rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      margin-bottom: 0.75rem;
+    }
+    .collapsible-content { display: none; }
+    .collapsible-content.open { display: block; }
+    .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Aletheia Evidence Report</h1>
+    <p class="header-meta">Session: <strong>{{SESSION_ID}}</strong></p>
+    <p class="header-meta">Sealed: <strong>{{SEALED_AT}}</strong></p>
+    <span class="badge badge-{{STATUS_CLASS}}">{{STATUS_TEXT}}</span>
+
+    <h2>Summary</h2>
+    <table>
+      <tbody>
+        <tr><th>Events</th><td>{{EVENT_COUNT}}</td></tr>
+        <tr><th>Chain Integrity</th><td>{{CHAIN_STATUS}}</td></tr>
+        <tr><th>Merkle Root</th><td class="mono">{{MERKLE_ROOT}}</td></tr>
+        <tr><th>Signatures</th><td>{{SIGNATURES_STATUS}}</td></tr>
+        <tr><th>Pack Version</th><td>{{VERSION}}</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Event Timeline</h2>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Source</th><th>Kind</th><th>Payload (truncated)</th></tr>
+      </thead>
+      <tbody>
+        {{TIMELINE}}
+      </tbody>
+    </table>
+
+    <h2>Hash Chain</h2>
+    <table>
+      <thead>
+        <tr><th>Seq</th><th>Hash (first 16)</th><th>Prev Hash (first 16)</th></tr>
+      </thead>
+      <tbody>
+        {{HASH_CHAIN}}
+      </tbody>
+    </table>
+
+    <h2>Signatures</h2>
+    {{SIGNATURES}}
+
+    <h2>Raw JSON</h2>
+    <button class="collapsible-toggle" onclick="this.nextElementSibling.classList.toggle('open'); this.textContent = this.nextElementSibling.classList.contains('open') ? 'Hide JSON' : 'Show JSON'">Show JSON</button>
+    <div class="collapsible-content">
+      <pre class="code-block">{{RAW_JSON}}</pre>
+    </div>
+
+    <div class="footer">Generated by Aletheia v{{VERSION}}</div>
+  </div>
+</body>
+</html>
